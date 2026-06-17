@@ -3,7 +3,9 @@ package com.insurance.insurance.service;
 import com.insurance.insurance.Entity.InsurancePolicy;
 import com.insurance.insurance.dto.InsuranceRequest;
 import com.insurance.insurance.dto.InsuranceResponse;
+import com.insurance.insurance.exception.CustomException;
 import com.insurance.insurance.mapper.AgentUserMapping;
+import com.insurance.insurance.mapper.PolicyMapper;
 import com.insurance.insurance.repository.AgentUserMappingRepository;
 import com.insurance.insurance.repository.InsuranceRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +22,9 @@ public class InsuranceCalculationService {
 
     @Autowired
     private AgentUserMappingRepository agentUserMappingRepository;
+
+    @Autowired
+    private PolicyMapper policyMapper;
 
     public InsurancePolicy calculateAndSave(InsuranceRequest request) {
 
@@ -91,7 +96,7 @@ public class InsuranceCalculationService {
         }
         if(role.equals("USER")){
             if(!userId.equals(requesterId)){
-                throw new RuntimeException("Access Denied: User can only view it own data");
+                throw new CustomException("Access Denied: User can only view it own data");
             }
             return repository.findByUserId(userId);
         }
@@ -99,7 +104,7 @@ public class InsuranceCalculationService {
             boolean allowed = agentUserMappingRepository.existsByAgentIdAndUserId(requesterId,userId);
 
             if(!allowed){
-                throw new RuntimeException("Access Denied: Agent not assigned to this user");
+                throw new CustomException("Access Denied: Agent not assigned to this user");
             }
             return repository.findByUserId(userId);
         }
@@ -109,7 +114,7 @@ public class InsuranceCalculationService {
         return  repository.findByAgentId(agentId);
     }
 
-    public List<InsurancePolicy> getAllPolicies(Long requesterId, String role){
+    public Object getAllPolicies(Long requesterId, String role){
 
         System.out.println("INSIDE getAllPolicies()");
         System.out.println("ROLE = " + role);
@@ -117,10 +122,15 @@ public class InsuranceCalculationService {
         if (role.equals("ADMIN")) {
             return repository.findAll()
                     .stream()
-                    .map(this:: to)
+                    .map(policyMapper::toAdminDto)
+                    .toList();
         }
         if(role.equals("USER")){
-            return repository.findByUserId(requesterId);
+            return repository.findByUserId(requesterId)
+                    .stream()
+                    .map(policyMapper::toUserDto)
+                    .toList();
+
         }
         if(role.equals("AGENT")){
             List<AgentUserMapping> agentUserMappings= agentUserMappingRepository.findByAgentId(requesterId);
@@ -128,9 +138,12 @@ public class InsuranceCalculationService {
             List<Long> userIds = agentUserMappings.stream().map(AgentUserMapping:: getUserId)
                     .toList();
 
-            return repository.findByUserIdIn(userIds);
+            return repository.findByUserIdIn(userIds)
+                    .stream()
+                    .map(policyMapper::toAgentDto)
+                    .toList();
         }
 
-        throw new RuntimeException("Invalid role");
+        throw new CustomException("Invalid role");
     }
 }
